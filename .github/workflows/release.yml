@@ -1,9 +1,16 @@
 name: Release
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'image tag prefix'
+        default: 'rc'
+        required: true
+
 
 permissions:
   contents: write # needed to write releases
