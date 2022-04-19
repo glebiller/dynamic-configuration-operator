@@ -22,6 +22,6 @@ func (LabeledForDynamicConfigurationPredicate) Update(e event.UpdateEvent) bool 
 		return val == dynamicConfigurationLabelValueWatch
 	}
 
-	predicateLogger.Info("Missing configuration-watch label, ignoring", "object", e.ObjectNew.GetName())
+	predicateLogger.V(10).Info("Missing configuration-watch label, ignoring", "object", e.ObjectNew.GetName())
 	return false
 }

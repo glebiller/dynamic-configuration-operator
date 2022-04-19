@@ -23,7 +23,7 @@ import (
 	"fmt"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
@@ -80,18 +80,27 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{}, err
 			}
 			if val, ok := configMap.GetLabels()[dynamicConfigurationLabelKey]; ok && val == dynamicConfigurationLabelValueWatch {
-				logger.Info("Found dynamic ConfigMap volume", "volume", volume.Name, "version", configMap.ResourceVersion)
-				dynamicResourceVersions.WriteString(volume.Name)
-				dynamicResourceVersions.WriteByte('=')
-				dynamicResourceVersions.WriteString(configMap.ResourceVersion)
-				dynamicResourceVersions.WriteByte(';')
+				logger.Info("Found dynamic ConfigMap volume", "volume", volume.Name)
+				appendToDynamicResourceVersions(&dynamicResourceVersions, volume.Name, configMap.ResourceVersion)
 			} else {
 				logger.V(10).Info("Ignoring ConfigMap volume", "volume", volume.Name)
+			}
+		} else if volume.Secret != nil {
+			namespacedName := types.NamespacedName{Namespace: deployment.Namespace, Name: volume.Secret.SecretName}
+			var secret corev1.Secret
+			if err := r.Get(ctx, namespacedName, &secret); err != nil {
+				logger.Error(err, "Unable to fetch Secret volume")
+				return ctrl.Result{}, err
+			}
+			if val, ok := secret.GetLabels()[dynamicConfigurationLabelKey]; ok && val == dynamicConfigurationLabelValueWatch {
+				logger.Info("Found dynamic Secret volume", "volume", volume.Name)
+				appendToDynamicResourceVersions(&dynamicResourceVersions, volume.Name, secret.ResourceVersion)
+			} else {
+				logger.V(10).Info("Ignoring Secret volume", "volume", volume.Name)
 			}
 		}
 	}
 
-	logger.Info("test", "test", dynamicResourceVersions.String())
 	newHashValue := calculateHashValue(dynamicResourceVersions)
 	if val, ok := deployment.Spec.Template.GetAnnotations()[configurationHashAnnotationKey]; !ok || val != newHashValue {
 		updatedDeployment := deployment.DeepCopy()
@@ -103,12 +112,19 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			logger.Error(err, "Unable to patch Deployment")
 			return ctrl.Result{}, err
 		}
-		logger.Info("Updated configuration hash", "hash", newHashValue, "version", deployment.GetResourceVersion())
+		logger.Info("Updated configuration hash", "hash", newHashValue)
 	} else {
-		logger.Info("Configuration hash is already up-to-date", "version", deployment.GetResourceVersion())
+		logger.Info("Configuration hash is already up-to-date")
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func appendToDynamicResourceVersions(dynamicResourceVersions *bytes.Buffer, volumeName string, resourceVersion string) {
+	dynamicResourceVersions.WriteString(volumeName)
+	dynamicResourceVersions.WriteByte('=')
+	dynamicResourceVersions.WriteString(resourceVersion)
+	dynamicResourceVersions.WriteByte(';')
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -122,44 +138,52 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Watches(
 			&source.Kind{Type: &corev1.ConfigMap{}},
-			handler.EnqueueRequestsFromMapFunc(r.findObjectsForConfigMap),
+			handler.EnqueueRequestsFromMapFunc(r.findObjectsForConfiguration("ConfigMap")),
+			builder.WithPredicates(LabeledForDynamicConfigurationPredicate{}),
+		).
+		Watches(
+			&source.Kind{Type: &corev1.Secret{}},
+			handler.EnqueueRequestsFromMapFunc(r.findObjectsForConfiguration("Secret")),
 			builder.WithPredicates(LabeledForDynamicConfigurationPredicate{}),
 		).
 		Complete(r)
 }
 
-func (r *DeploymentReconciler) findObjectsForConfigMap(configMap client.Object) []reconcile.Request {
-	labelRequirement, err := labels.NewRequirement(dynamicConfigurationLabelKey, selection.Equals,
-		[]string{dynamicConfigurationLabelValueWatch})
-	if err != nil {
-		return []reconcile.Request{}
-	}
+func (r *DeploymentReconciler) findObjectsForConfiguration(kind string) func(object client.Object) []reconcile.Request {
+	return func(object client.Object) []reconcile.Request {
+		labelRequirement, err := labels.NewRequirement(dynamicConfigurationLabelKey, selection.Equals,
+			[]string{dynamicConfigurationLabelValueWatch})
+		if err != nil {
+			return []reconcile.Request{}
+		}
 
-	watchedDeployments := &appsv1.DeploymentList{}
-	listOps := &client.ListOptions{
-		LabelSelector: labels.NewSelector().Add(*labelRequirement),
-		Namespace:     configMap.GetNamespace(),
-	}
-	err = r.List(context.TODO(), watchedDeployments, listOps)
-	if err != nil {
-		reconcilerLogger.Error(err, "Unable to list watched Deployments")
-		return []reconcile.Request{}
-	}
+		watchedDeployments := &appsv1.DeploymentList{}
+		listOps := &client.ListOptions{
+			LabelSelector: labels.NewSelector().Add(*labelRequirement),
+			Namespace:     object.GetNamespace(),
+		}
+		err = r.List(context.TODO(), watchedDeployments, listOps)
+		if err != nil {
+			reconcilerLogger.Error(err, "Unable to list watched Deployments")
+			return []reconcile.Request{}
+		}
 
-	var requests []reconcile.Request
-	for _, deployment := range watchedDeployments.Items {
-		for _, volume := range deployment.Spec.Template.Spec.Volumes {
-			if volume.ConfigMap != nil && volume.ConfigMap.Name == configMap.GetName() {
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      deployment.GetName(),
-						Namespace: deployment.GetNamespace(),
-					},
-				})
+		var requests []reconcile.Request
+		for _, deployment := range watchedDeployments.Items {
+			for _, volume := range deployment.Spec.Template.Spec.Volumes {
+				if (kind == "ConfigMap" && volume.ConfigMap != nil && volume.ConfigMap.Name == object.GetName()) ||
+					(kind == "Secret" && volume.Secret != nil && volume.Secret.SecretName == object.GetName()) {
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      deployment.GetName(),
+							Namespace: deployment.GetNamespace(),
+						},
+					})
+				}
 			}
 		}
+		return requests
 	}
-	return requests
 }
 
 func calculateHashValue(dynamicResourceVersions bytes.Buffer) string {
