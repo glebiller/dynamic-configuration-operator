@@ -77,7 +77,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			var configMap corev1.ConfigMap
 			if err := r.Get(ctx, namespacedName, &configMap); err != nil {
 				logger.Error(err, "Unable to fetch ConfigMap volume")
-				return ctrl.Result{}, err
+				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 			if val, ok := configMap.GetLabels()[dynamicConfigurationLabelKey]; ok && val == dynamicConfigurationLabelValueWatch {
 				logger.Info("Found dynamic ConfigMap volume", "volume", volume.Name)
@@ -90,7 +90,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			var secret corev1.Secret
 			if err := r.Get(ctx, namespacedName, &secret); err != nil {
 				logger.Error(err, "Unable to fetch Secret volume")
-				return ctrl.Result{}, err
+				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 			if val, ok := secret.GetLabels()[dynamicConfigurationLabelKey]; ok && val == dynamicConfigurationLabelValueWatch {
 				logger.Info("Found dynamic Secret volume", "volume", volume.Name)
@@ -133,19 +133,18 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(
 			&appsv1.Deployment{},
 			builder.WithPredicates(
-				predicate.And(predicate.GenerationChangedPredicate{}, LabeledForDynamicConfigurationPredicate{}),
+				predicate.And(predicate.GenerationChangedPredicate{}),
 			),
 		).
 		Watches(
 			&source.Kind{Type: &corev1.ConfigMap{}},
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsForConfiguration("ConfigMap")),
-			builder.WithPredicates(LabeledForDynamicConfigurationPredicate{}),
 		).
 		Watches(
 			&source.Kind{Type: &corev1.Secret{}},
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsForConfiguration("Secret")),
-			builder.WithPredicates(LabeledForDynamicConfigurationPredicate{}),
 		).
+		WithEventFilter(LabeledForDynamicConfigurationPredicate{}).
 		Complete(r)
 }
 
