@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: manager
-        image: kissy/dynamic-configuration-operator:v0.1.1
+        image: controller
         command:
         - /manager
         args:

@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= dynamic-configuration-controller
+IMG ?= kissy/dynamic-configuration-operator
 TAG ?= latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.23
@@ -135,6 +135,6 @@ endef
 ##@ Release
 
 .PHONY: yamls
-yamls: manifests kustomize
+yamls: #manifests kustomize
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}:${TAG}
 	$(KUSTOMIZE) build config/default > bin/controller.yaml

@@ -69,11 +69,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: Generate YAMLs
-        run: |
-          TAG=${{ steps.prep.outputs.VERSION }} make yamls
-      - name: Upload YAMLs
-        uses: actions/upload-artifact@v3
-        with:
-          name: controller.yaml
-          path: out/controller.yaml
+      #- name: Generate YAMLs
+      #  run: |
+      #    TAG=${{ steps.prep.outputs.VERSION }} make yamls
+      #- name: Upload YAMLs
+      #  uses: actions/upload-artifact@v3
+      #  with:
+      #    name: controller.yaml
+      #    path: out/controller.yaml
