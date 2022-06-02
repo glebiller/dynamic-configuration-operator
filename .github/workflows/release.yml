@@ -11,7 +11,6 @@ on:
         default: 'rc'
         required: true
 
-
 permissions:
   contents: write # needed to write releases
   id-token: write # needed for keyless signing
@@ -70,9 +69,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      #- name: Check images
-      #  run: |
-      #    docker buildx imagetools inspect docker.io/glebiller/${{ env.CONTROLLER }}:${{ steps.prep.outputs.VERSION }}
-      #    docker buildx imagetools inspect ghcr.io/glebiller/${{ env.CONTROLLER }}:${{ steps.prep.outputs.VERSION }}
-      #    docker pull docker.io/glebiller/${{ env.CONTROLLER }}:${{ steps.prep.outputs.VERSION }}
-      #    docker pull ghcr.io/glebiller/${{ env.CONTROLLER }}:${{ steps.prep.outputs.VERSION }}
+      - name: Generate YAMLs
+        run: |
+          TAG=${{ steps.prep.outputs.VERSION }} make yamls
+      - name: Upload YAMLs
+        uses: actions/upload-artifact@v3
+        with:
+          name: controller.yaml
+          path: out/controller.yaml

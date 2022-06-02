@@ -1,12 +1,13 @@
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: manager-rolebinding
+  name: dynamic-configuration-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: manager-role
+  name: dynamic-configuration-operator
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
-  namespace: system
+  name: dynamic-configuration-operator
+  namespace: dynamic-configuration-system

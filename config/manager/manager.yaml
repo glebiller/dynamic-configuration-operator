@@ -1,38 +1,43 @@
+---
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: dynamic-configuration-system
   labels:
-    control-plane: controller-manager
-  name: system
+    app.kubernetes.io/part-of: dynamic-configuration
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: controller-manager
-  namespace: system
+  name: dynamic-configuration-operator
+  namespace: dynamic-configuration-system
   labels:
-    control-plane: controller-manager
+    app.kubernetes.io/name: dynamic-configuration-operator
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: dynamic-configuration
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      app.kubernetes.io/name: dynamic-configuration-operator
+      app.kubernetes.io/component: operator
+      app.kubernetes.io/part-of: dynamic-configuration
   replicas: 1
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        control-plane: controller-manager
+        app.kubernetes.io/name: dynamic-configuration-operator
+        app.kubernetes.io/component: operator
+        app.kubernetes.io/part-of: dynamic-configuration
     spec:
-      securityContext:
-        runAsNonRoot: true
       containers:
-      - command:
+      - name: manager
+        image: kissy/dynamic-configuration-operator:v0.1.1
+        command:
         - /manager
         args:
         - --leader-elect
-        image: kissy/dynamic-configuration-operator
-        name: manager
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:
@@ -49,10 +54,12 @@ spec:
           periodSeconds: 10
         resources:
           limits:
-            cpu: 20m
-            memory: 32Mi
+            cpu: 50m
+            memory: 64Mi
           requests:
             cpu: 10m
-            memory: 16Mi
-      serviceAccountName: controller-manager
+            memory: 32Mi
+      serviceAccountName: dynamic-configuration-operator
+      securityContext:
+        runAsNonRoot: true
       terminationGracePeriodSeconds: 10
